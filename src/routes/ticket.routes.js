@@ -18,6 +18,7 @@ router.post(
 
 // Get: All roles (logic inside controller handles filtering)
 router.get("/", ticketController.getTickets);
+router.get("/stats", ticketController.getTicketStats);
 
 // Update Status: AGENT, ADMIN
 router.put(

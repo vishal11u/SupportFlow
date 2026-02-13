@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Live Ticket Monitor</title>
+    <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+    <style>
+      body {
+        font-family: sans-serif;
+        background: #121212;
+        color: #e0e0e0;
+        padding: 20px;
+      }
+      .log {
+        background: #1e1e1e;
+        padding: 10px;
+        border-radius: 8px;
+        height: 400px;
+        overflow-y: auto;
+        border: 1px solid #333;
+      }
+      .event {
+        margin-bottom: 10px;
+        padding: 10px;
+        border-left: 4px solid #4caf50;
+        background: #252525;
+      }
+      .event.created {
+        border-left-color: #2196f3;
+      }
+      .event.updated {
+        border-left-color: #ff9800;
+      }
+      .event.closed {
+        border-left-color: #f44336;
+      }
+      .event.deleted {
+        border-left-color: #9c27b0;
+      }
+      .meta {
+        font-size: 0.8em;
+        color: #888;
+      }
+      input {
+        background: #333;
+        color: white;
+        border: 1px solid #444;
+        padding: 8px;
+        width: 300px;
+      }
+      button {
+        padding: 8px 16px;
+        cursor: pointer;
+        background: #2196f3;
+        color: white;
+        border: none;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Live Ticket Monitor</h1>
+    <p>Connect to the WebSocket to see real-time ticket events.</p>
+
+    <div style="margin-bottom: 20px">
+      <input type="text" id="token" placeholder="Paste JWT Token here" />
+      <button onclick="connect()">Connect</button>
+    </div>
+
+    <div id="status">Status: Disconnected</div>
+    <h3>Live Events:</h3>
+    <div id="log" class="log"></div>
+
+    <script>
+      let socket;
+      const logEl = document.getElementById("log");
+
+      function addLog(type, message, data) {
+        const div = document.createElement("div");
+        div.className = `event ${type}`;
+        div.innerHTML = `
+                <strong>[${type.toUpperCase()}]</strong> ${message}
+                <div class="meta">${new Date().toLocaleTimeString()}</div>
+                <pre style="font-size: 0.7em; background: #000; padding: 5px; margin-top: 5px;">${JSON.stringify(data, null, 2)}</pre>
+            `;
+        logEl.prepend(div);
+      }
+
+      function connect() {
+        const token = document.getElementById("token").value;
+        if (!token) return alert("Please paste a token first");
+
+        if (socket) socket.disconnect();
+
+        socket = io("http://localhost:8000", {
+          auth: { token },
+        });
+
+        socket.on("connect", () => {
+          document.getElementById("status").innerText = "Status: Connected! ✅";
+          addLog("system", "Connected to WebSocket", { socketId: socket.id });
+        });
+
+        socket.on("connect_error", (err) => {
+          document.getElementById("status").innerText = "Status: Error ❌";
+          addLog("error", "Connection failed", err.message);
+        });
+
+        // Listen for ticket events
+        socket.on("ticket_created", (data) => {
+          addLog(
+            "created",
+            `Ticket #${data.ticket.id} created by ${data.ticket.creator.name}`,
+            data,
+          );
+        });
+
+        socket.on("ticket_updated", (data) => {
+          addLog(
+            "updated",
+            `Ticket #${data.ticketId} updated to ${data.status}`,
+            data,
+          );
+        });
+
+        socket.on("ticket_closed", (data) => {
+          addLog("closed", `Ticket #${data.ticketId} CLOSED`, data);
+        });
+
+        socket.on("ticket_deleted", (data) => {
+          addLog("deleted", `Ticket #${data.ticketId} deleted`, data);
+        });
+
+        socket.on("notification", (data) => {
+          addLog(
+            "notification",
+            `Personal Notification: ${data.message}`,
+            data,
+          );
+        });
+      }
+    </script>
+  </body>
+</html>

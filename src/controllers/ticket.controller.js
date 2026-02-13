@@ -54,7 +54,26 @@ exports.createTicket = async (req, res) => {
       createdById: userId,
     });
 
-    // Notify Admins? (Optional, skipping for now to reduce noise)
+    // Emit live event to all staff in the tenant
+    try {
+      const io = getIO();
+      // Notify Agents and Admins about new ticket
+      io.to(`${tenantId}_AGENT`)
+        .to(`${tenantId}_ADMIN`)
+        .emit("ticket_created", {
+          ticket: await Ticket.findByPk(ticket.id, {
+            include: [
+              {
+                model: User,
+                as: "creator",
+                attributes: ["id", "name", "email"],
+              },
+            ],
+          }),
+        });
+    } catch (err) {
+      console.warn("Real-time emission failed:", err.message);
+    }
 
     successResponse(
       res,
@@ -154,6 +173,28 @@ exports.updateTicketStatus = async (req, res) => {
       );
     }
 
+    // Emit live event to the entire tenant or relevant rooms
+    try {
+      const io = getIO();
+      const updatedTicket = await Ticket.findByPk(id, {
+        include: [
+          { model: User, as: "creator", attributes: ["id", "name", "email"] },
+          { model: User, as: "assignee", attributes: ["id", "name", "email"] },
+        ],
+      });
+
+      const eventType =
+        status === "CLOSED" ? "ticket_closed" : "ticket_updated";
+      io.to(tenantId).emit(eventType, {
+        ticketId: id,
+        status,
+        updatedTicket,
+        updatedBy: userId,
+      });
+    } catch (err) {
+      console.warn("Real-time emission failed:", err.message);
+    }
+
     successResponse(
       res,
       "Ticket status updated successfully",
@@ -235,6 +276,14 @@ exports.softDeleteTicket = async (req, res) => {
     }
 
     await ticket.destroy();
+    // Emit live delete event
+    try {
+      const io = getIO();
+      io.to(tenantId).emit("ticket_deleted", { ticketId: id });
+    } catch (err) {
+      console.warn("Real-time emission failed:", err.message);
+    }
+
     successResponse(
       res,
       "Ticket deleted successfully",
@@ -243,6 +292,40 @@ exports.softDeleteTicket = async (req, res) => {
       "TICKET_DELETED",
     );
   } catch (error) {
+    errorResponse(res, "Server error", 500, "SERVER_ERROR", error);
+  }
+};
+
+exports.getTicketStats = async (req, res) => {
+  try {
+    const { tenantId, id: userId, role } = req.user;
+    const where = { tenantId };
+
+    if (role === "USER") {
+      where.createdById = userId;
+    } else if (role === "AGENT") {
+      where.assignedToId = userId;
+    }
+
+    const tickets = await Ticket.findAll({ where });
+
+    const stats = {
+      total: tickets.length,
+      open: tickets.filter((t) => t.status === "OPEN").length,
+      inProgress: tickets.filter((t) => t.status === "IN_PROGRESS").length,
+      closed: tickets.filter((t) => t.status === "CLOSED").length,
+      highPriority: tickets.filter((t) => t.priority === "HIGH").length,
+    };
+
+    successResponse(
+      res,
+      "Stats retrieved successfully",
+      stats,
+      200,
+      "STATS_RETRIEVED",
+    );
+  } catch (error) {
+    console.error(error);
     errorResponse(res, "Server error", 500, "SERVER_ERROR", error);
   }
 };

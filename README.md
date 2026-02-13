@@ -1,6 +1,3 @@
-You are a senior system architect.
-
-Explain the complete end-to-end flow of a
 multi-tenant, role-based Customer Support Ticket System
 (Zendesk-style backend) built with Node.js, Express, PostgreSQL, and Sequelize.
 

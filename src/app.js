@@ -4,7 +4,12 @@ const { successResponse, errorResponse } = require("./utils/response.util");
 const app = express();
 
 app.use(express.json());
-app.use(cors());
+app.use(
+  cors({
+    origin: ["http://localhost:5173", "http://localhost:3000"],
+    credentials: true,
+  }),
+);
 
 app.get("/", (req, res) => {
   successResponse(
